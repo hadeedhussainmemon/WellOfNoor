@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>My Shorts</title>
+  <style>
+    :root { background: #000; color: #fff; }
+    html,body { height: 100%; margin: 0; background: #000; }
+    .player {
+      height: 100vh;
+      width: 100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow: hidden;
+      position: relative;
+    }
+    video {
+      max-height:100vh;
+      width:auto;
+      height:100vh;
+      object-fit: cover;
+      display:block;
+    }
+    /* top overlay for title */
+    .meta {
+      position: absolute;
+      left: 12px;
+      bottom: 22px;
+      right: 12px;
+      pointer-events: none;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+      font-family: system-ui, sans-serif;
+    }
+    .title { font-size: 18px; font-weight: 600; }
+    .desc { font-size: 13px; opacity: 0.9; margin-top: 6px; }
+    /* mute/play button corner */
+    .controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display:flex;
+      gap:8px;
+    }
+    .btn {
+      background: rgba(255,255,255,0.08);
+      border: none;
+      color: #fff;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      pointer-events: auto;
+    }
+    /* loader */
+    .loader {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%,-50%);
+      font-size: 14px;
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="player">
+    <div class="loader" id="loader">Loading videos…</div>
+  </div>
+
+  <script>
+    // --------- CONFIG: change this to your backend URL ----------
+    const API_BASE = 'http://localhost:4000/api'; // <-- change if backend hosted elsewhere
+    const PREFETCH_COUNT = 20; // how many random videos to fetch initially
+    // -----------------------------------------------------------
+
+    const app = document.getElementById('app');
+    const loader = document.getElementById('loader');
+
+    let buffer = []; // array of video objects {id,title,description,url}
+    let currentIndex = 0;
+    let isTransitioning = false;
+
+    // create UI for one video
+    function createVideoCard(videoObj) {
+      const container = document.createElement('div');
+      container.className = 'player';
+
+      const video = document.createElement('video');
+      video.setAttribute('playsinline','');
+      video.setAttribute('webkit-playsinline','');
+      video.setAttribute('muted',''); // auto-play policies: muted
+      video.setAttribute('autoplay','');
+      video.setAttribute('controls',''); // optional; remove if you don't want controls
+      video.src = videoObj.url;
+      video.preload = 'auto';
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.innerHTML = `<div class="title">${escapeHtml(videoObj.title || '')}</div>
+                        <div class="desc">${escapeHtml(videoObj.description || '')}</div>`;
+
+      const controls = document.createElement('div');
+      controls.className = 'controls';
+      const muteBtn = document.createElement('button');
+      muteBtn.className = 'btn';
+      muteBtn.textContent = 'Unmute';
+      muteBtn.onclick = () => {
+        if (video.muted) {
+          video.muted = false;
+          muteBtn.textContent = 'Mute';
+        } else {
+          video.muted = true;
+          muteBtn.textContent = 'Unmute';
+        }
+      };
+
+      controls.appendChild(muteBtn);
+
+      container.appendChild(video);
+      container.appendChild(meta);
+      container.appendChild(controls);
+
+      // when video ends -> go next
+      video.addEventListener('ended', () => nextVideo());
+
+      // slightly improve UX: if video is stalled, skip after 8s
+      let stalledTimer = null;
+      video.addEventListener('stalled', () => {
+        stalledTimer = setTimeout(() => nextVideo(), 8000);
+      });
+      video.addEventListener('playing', () => {
+        if (stalledTimer) { clearTimeout(stalledTimer); stalledTimer = null; }
+      });
+
+      // also swipe up/down or wheel to navigate (debounced)
+      let wheelCooldown = false;
+      window.addEventListener('wheel', (e) => {
+        if (wheelCooldown) return;
+        wheelCooldown = true;
+        setTimeout(()=> wheelCooldown = false, 300);
+        if (e.deltaY > 0) nextVideo();
+        else nextVideo(); // same behavior for up/down; change if you want prev
+      }, { passive: true });
+
+      // touch swipe detection
+      let touchStartY = null;
+      window.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches[0]) touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+      window.addEventListener('touchend', (e) => {
+        if (!touchStartY) return;
+        const endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : null;
+        if (endY === null) { touchStartY = null; return; }
+        const dy = touchStartY - endY;
+        if (Math.abs(dy) > 30) nextVideo();
+        touchStartY = null;
+      }, { passive: true });
+
+      return { container, video };
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return s.replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];});
+    }
+
+    // Load more random videos from backend into buffer
+    async function fetchRandomVideos(count=20) {
+      try {
+        const res = await fetch(`${API_BASE}/videos/random?count=${count}`);
+        if (!res.ok) throw new Error('Network error');
+        const data = await res.json();
+        // append
+        buffer.push(...data);
+      } catch (err) {
+        console.error('fetch error', err);
+      }
+    }
+
+    // show next video from buffer
+    async function nextVideo() {
+      if (isTransitioning) return;
+      isTransitioning = true;
+
+      // if buffer low -> prefetch more asynchronously
+      if (buffer.length - currentIndex <= 6) {
+        // don't await, fetch in background
+        fetchRandomVideos(PREFETCH_COUNT).catch(()=>{});
+      }
+
+      const videoObj = buffer[currentIndex];
+      if (!videoObj) {
+        // buffer empty: show loading and try to fetch
+        loader.style.display = 'block';
+        await fetchRandomVideos(PREFETCH_COUNT);
+        loader.style.display = 'none';
+        if (!buffer[currentIndex]) { isTransitioning = false; return; }
+      }
+
+      // remove old children
+      while (app.firstChild) app.removeChild(app.firstChild);
+
+      const { container, video } = createVideoCard(videoObj);
+      app.appendChild(container);
+
+      // try to play (browser may block sound unless muted; we set muted by default)
+      try {
+        await video.play();
+      } catch (e) {
+        // ignore
+      }
+
+      currentIndex++;
+      // loop if reaching end
+      if (currentIndex >= buffer.length - 2) {
+        // fetch more to avoid running out
+        fetchRandomVideos(PREFETCH_COUNT).catch(()=>{});
+      }
+
+      isTransitioning = false;
+    }
+
+    // initial load
+    (async function init() {
+      loader.style.display = 'block';
+      await fetchRandomVideos(PREFETCH_COUNT);
+      loader.style.display = 'none';
+      // randomize buffer order again for extra randomness
+      shuffle(buffer);
+      currentIndex = 0;
+      nextVideo();
+    })();
+
+    // Fisher-Yates shuffle
+    function shuffle(a) {
+      for (let i=a.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+curl -X POST http://localhost:4000/api/admin/videos \
+ -H "Content-Type: application/json" \
+ -H "x-admin-token: change_this_to_a_strong_secret" \
+ -d '{"title":"My Short 1","description":"Desc","driveId":"1a2b3c4d..."}'

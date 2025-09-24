@@ -5,114 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>My Shorts</title>
-  <style>
-    :root {
-      background: #000;
-      color: #fff;
-      font-family: system-ui, sans-serif;
-    }
-
-    html,
-    body {
-      margin: 0;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-    }
-
-    #app {
-      height: 100%;
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-    }
-
-    video {
-      height: 100%;
-      width: 100%;
-      object-fit: contain;
-      /* default, change on metadata */
-      background: #000;
-      display: block;
-      transition: object-fit 0.3s ease;
-    }
-
-    .fit-cover {
-      object-fit: cover;
-    }
-
-    .fit-contain {
-      object-fit: contain;
-      background: #000;
-    }
-
-    /* Overlay gradient for better readability */
-    .overlay {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 15%, rgba(0, 0, 0, 0) 50%);
-      pointer-events: none;
-    }
-
-    /* Meta info (title, desc) */
-    .meta {
-      position: absolute;
-      left: 16px;
-      bottom: 32px;
-      right: 16px;
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
-    }
-
-    .title {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-
-    .desc {
-      font-size: 14px;
-      opacity: 0.9;
-      line-height: 1.3;
-    }
-
-    /* Controls top-right */
-    .controls {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      display: flex;
-      gap: 8px;
-      z-index: 10;
-    }
-
-    .btn {
-      background: rgba(255, 255, 255, 0.15);
-      border: none;
-      color: #fff;
-      padding: 8px 12px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-size: 14px;
-      backdrop-filter: blur(4px);
-      transition: background 0.2s;
-    }
-
-    .btn:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    /* Loader */
-    .loader {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 16px;
-      opacity: 0.85;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
@@ -120,11 +13,10 @@
     <div class="loader" id="loader">Loading videos…</div>
   </div>
 
+  <script src="config.js"></script>
   <script>
-    // --------- CONFIG: change this to your backend URL ----------
-    const API_BASE = 'https://well-of-noor.vercel.app/api';
+    const API_BASE = window.APP_CONFIG.API_BASE;
     const PREFETCH_COUNT = 15;
-    // -----------------------------------------------------------
 
     const app = document.getElementById('app');
     const loader = document.getElementById('loader');
@@ -145,7 +37,6 @@
       video.muted = true;
       video.preload = 'auto';
 
-      // Detect portrait vs landscape
       video.addEventListener("loadedmetadata", () => {
         const ratio = video.videoWidth / video.videoHeight;
         if (ratio > 1) {
@@ -157,11 +48,9 @@
         }
       });
 
-      // Overlay
       const overlay = document.createElement('div');
       overlay.className = 'overlay';
 
-      // Meta info
       const meta = document.createElement('div');
       meta.className = 'meta';
       meta.innerHTML = `
@@ -169,7 +58,6 @@
         <div class="desc">${escapeHtml(videoObj.description || '')}</div>
       `;
 
-      // Controls
       const controls = document.createElement('div');
       controls.className = 'controls';
       const muteBtn = document.createElement('button');
@@ -191,9 +79,7 @@
       container.appendChild(meta);
       container.appendChild(controls);
 
-      // Go next on end
       video.addEventListener('ended', () => nextVideo());
-
       return { container, video };
     }
 
@@ -255,9 +141,8 @@
       }
     }
 
-    // Navigation: scroll / swipe
     let wheelCooldown = false;
-    window.addEventListener('wheel', (e) => {
+    window.addEventListener('wheel', () => {
       if (wheelCooldown) return;
       wheelCooldown = true;
       setTimeout(() => wheelCooldown = false, 300);
